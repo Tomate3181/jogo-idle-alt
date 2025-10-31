@@ -50,7 +50,7 @@ let playerMaxHealth = 100;
 let playerDamage = 10;
 
 let enemySpawnTimer;
-let maxEnemies = 3;
+let maxEnemies = 4;
 
 // --- INIMIGO ATIRADOR (NOVIDADE) ---
 let shooterEnemies; // Grupo para inimigos atiradores (opcional, mas pode ajudar a gerenciar diferentes lógicas)
@@ -59,7 +59,7 @@ let shooterEnemyFireRate = 2000; // Tempo entre disparos do inimigo atirador (ms
 let shooterEnemyDamage = 10;     // Dano da bala do inimigo
 let shooterEnemyBulletSpeed = 150; // Velocidade da bala do inimigo
 let shooterEnemyBulletSpread = 30; // Ângulo de espalhamento para "muitas balas" (graus)
-let shooterEnemyBulletCount = 3;   // Quantidade de balas por disparo (bullet hell)
+let shooterEnemyBulletCount = 5;   // Quantidade de balas por disparo (bullet hell)
 
 
 // --- ONDAS ---
@@ -293,6 +293,7 @@ function collectCoin(player, coin) {
     coin.disableBody(true, true);
     score += pointsPerCoin;
     updateHUD();
+    updateShop(); // <-- ADICIONE ESTA LINHA
     saveGame();
 }
 
@@ -600,9 +601,9 @@ function hitEnemy(player, enemy) {
 
         // Se o jogador morrer, reinicia o jogo e reseta as variáveis
         if (player.health <= 0) {
-            score = 0;
-            currentWave = 0;
-            saveGame();
+            // score = 0; <-- REMOVA ESTA LINHA
+            // currentWave = 0; <-- REMOVA ESTA LINHA
+            // saveGame(); <-- REMOVA ESTA LINHA
             this.scene.restart();
         }
     }
@@ -707,9 +708,9 @@ function enemyBulletHitPlayer(player, bullet) {
         this.time.delayedCall(200, () => player.clearTint());
         updateHUD();
         if (player.health <= 0) {
-            score = 0;
-            currentWave = 0;
-            saveGame();
+            // score = 0; <-- REMOVA ESTA LINHA
+            // currentWave = 0; <-- REMOVA ESTA LINHA
+            // saveGame(); <-- REMOVA ESTA LINHA
             this.scene.restart();
         }
     }
@@ -759,9 +760,9 @@ function bouncerBulletHitPlayer(player, bullet) {
         this.time.delayedCall(200, () => player.clearTint());
         updateHUD();
         if (player.health <= 0) {
-            score = 0;
-            currentWave = 0;
-            saveGame();
+            // score = 0; <-- REMOVA ESTA LINHA
+            // currentWave = 0; <-- REMOVA ESTA LINHA
+            // saveGame(); <-- REMOVA ESTA LINHA
             this.scene.restart();
         }
     }
