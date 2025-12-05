@@ -3,7 +3,7 @@ const config = {
     type: Phaser.AUTO,
     width: 1000,
     height: 600,
-    physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } }, // Defina debug para true para ver as hitboxes
+    physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
     scene: { preload, create, update }
 };
 
@@ -14,8 +14,8 @@ let keys;
 let coins;
 let score = 0;
 
-// --- Upgrades ---
-let playerSpeed = 100;
+// --- Upgrades & Stats ---
+let playerSpeed = 80; // Balanced: Start slower
 let maxCoins = 2;
 let coinSpawnInterval = 2000;
 
@@ -32,35 +32,46 @@ let magnetActive = false;
 let magnetDuration = 5000;
 
 let shopTexts = {};
-let shopButtons = {}; // Agora armazenará os retângulos dos botões
+let shopButtons = {};
 
 // --- COMBATE ---
 let enemies;
 let currentWeapon = 'pistol';
 let inventory = ['pistol', 'sword'];
-let bullets; // Balas do jogador
+let bullets;
 let lastShot = 0;
-let fireRate = 300;
+let fireRate = 500; // Balanced: Slower fire rate
 let swordAttackCooldown = 500;
 let lastSwordAttack = 0;
 let pointer;
 
-let playerHealth = 100;
-let playerMaxHealth = 100;
-let playerDamage = 10;
+let playerHealth = 50; // Balanced: Start weaker
+let playerMaxHealth = 50;
+let playerDamage = 5; // Balanced: Weaker damage
 
 let enemySpawnTimer;
 let maxEnemies = 4;
 
-// --- INIMIGO ATIRADOR (NOVIDADE) ---
-let shooterEnemies; // Grupo para inimigos atiradores (opcional, mas pode ajudar a gerenciar diferentes lógicas)
-let enemyBullets;   // Grupo para as balas dos inimigos
-let shooterEnemyFireRate = 2000; // Tempo entre disparos do inimigo atirador (ms)
-let shooterEnemyDamage = 10;     // Dano da bala do inimigo
-let shooterEnemyBulletSpeed = 150; // Velocidade da bala do inimigo
-let shooterEnemyBulletSpread = 30; // Ângulo de espalhamento para "muitas balas" (graus)
-let shooterEnemyBulletCount = 5;   // Quantidade de balas por disparo (bullet hell)
+// --- INIMIGOS ---
+let shooterEnemies;
+let enemyBullets;
+let shooterEnemyFireRate = 2000;
+let shooterEnemyDamage = 10;
+let shooterEnemyBulletSpeed = 150;
+let shooterEnemyBulletSpread = 30;
+let shooterEnemyBulletCount = 5;
 
+let bouncerEnemies;
+let bouncerBullets;
+let bouncerEnemyFireRate = 3000;
+let bouncerEnemyDamage = 20;
+let bouncerEnemyBulletSpeed = 300;
+let bouncerEnemyBulletSize = 15;
+let bouncerEnemyBulletLifetime = 5000;
+
+// Novos Inimigos
+let exploderEnemies;
+let sniperEnemies;
 
 // --- ONDAS ---
 let currentWave = 0;
@@ -69,7 +80,7 @@ let baseEnemySpeed = 80;
 let baseEnemyDamage = 10;
 const WAVE_INTERVAL = 30000;
 
-// Variáveis da HUD (AGORA PARTE DA CENA PRINCIPAL)
+// --- HUD ---
 let hudScoreText;
 let hudHealthText;
 let hudWaveText;
@@ -77,16 +88,10 @@ let hudBg;
 let hudWeaponHUD = {};
 let hudWeaponContainer;
 
-
-// --- INIMIGO RICOCHETEADOR (NOVIDADE) ---
-let bouncerEnemies;          // Grupo para inimigos ricocheteadores
-let bouncerBullets;          // Grupo para as balas ricocheteadoras
-let bouncerEnemyFireRate = 3000; // Tempo entre disparos do inimigo ricocheteador (ms)
-let bouncerEnemyDamage = 20;     // Dano da bala ricocheteadora
-let bouncerEnemyBulletSpeed = 300; // Velocidade da bala ricocheteadora
-let bouncerEnemyBulletSize = 15; // Tamanho da bala ricocheteadora (será usado para setScale)
-let bouncerEnemyBulletLifetime = 5000; // Tempo de vida da bala ricocheteadora (ms)
-
+// --- POWER UPS ---
+let powerUps = [];
+let isGamePaused = false;
+let playerBulletCount = 1; // Multishot
 
 // --- LOCAL STORAGE ---
 function saveGame() {
@@ -97,9 +102,40 @@ function saveGame() {
         playerHealth, playerMaxHealth, playerDamage,
         currentWave,
         currentWeapon,
-        inventory
+        inventory,
+        fireRate,
+        playerBulletCount,
+        powerUps
     };
     localStorage.setItem('idleGameSave', JSON.stringify(saveData));
+}
+
+function resetGame() {
+    score = 0;
+    speedLevel = 1;
+    coinLevel = 1;
+    magnetLevel = 0;
+    playerSpeed = 80;
+    maxCoins = 2;
+    upgradeCostSpeed = 50;
+    upgradeCostCoins = 100;
+    magnetCost = 150;
+    playerHealth = 50;
+    playerMaxHealth = 50;
+    playerDamage = 5;
+    currentWave = 0;
+    currentWeapon = 'pistol';
+    inventory = ['pistol', 'sword'];
+    fireRate = 500;
+    playerBulletCount = 1;
+    powerUps = [];
+
+    baseEnemyHealth = 30;
+    baseEnemySpeed = 80;
+    baseEnemyDamage = 10;
+    maxEnemies = 4;
+
+    saveGame();
 }
 
 function loadGame() {
@@ -110,32 +146,35 @@ function loadGame() {
         speedLevel = data.speedLevel ?? 1;
         coinLevel = data.coinLevel ?? 1;
         magnetLevel = data.magnetLevel ?? 0;
-        playerSpeed = data.playerSpeed ?? 100;
+        playerSpeed = data.playerSpeed ?? 80;
         maxCoins = data.maxCoins ?? 2;
         upgradeCostSpeed = data.upgradeCostSpeed ?? 50;
         upgradeCostCoins = data.upgradeCostCoins ?? 100;
         magnetCost = data.magnetCost ?? 150;
-        playerHealth = data.playerHealth ?? 100;
-        playerMaxHealth = data.maxHealth ?? 100;
-        playerDamage = data.playerDamage ?? 10;
+        playerHealth = data.playerHealth ?? 50;
+        playerMaxHealth = data.maxHealth ?? 50;
+        playerDamage = data.playerDamage ?? 5;
         currentWave = data.currentWave ?? 0;
         currentWeapon = data.currentWeapon ?? 'pistol';
         inventory = data.inventory ?? ['pistol', 'sword'];
+        fireRate = data.fireRate ?? 500;
+        playerBulletCount = data.playerBulletCount ?? 1;
+        powerUps = data.powerUps ?? [];
     }
 }
 
-// --- preload() MODIFICADO ---
 function preload() {
     this.load.image('player', 'player.png');
     this.load.image('coin', 'coin.png');
     this.load.image('red_square', 'enemy.png');
     this.load.image('shooter_enemy', 'shooter_enemy.png');
     this.load.image('enemy_bullet', 'enemy_bullet.png');
-    this.load.image('bouncer_enemy', 'bouncer_enemy.png'); // NOVO: Sprite para o inimigo ricocheteador
-    this.load.image('bouncer_bullet', 'bouncer_bullet.png'); // NOVO: Sprite para a bala ricocheteadora
+    this.load.image('bouncer_enemy', 'bouncer_enemy.png');
+    this.load.image('bouncer_bullet', 'bouncer_bullet.png');
+    // Placeholder colors for new enemies if images don't exist, Phaser handles missing images by showing a green box usually, 
+    // but we can use tinting on existing sprites to differentiate.
 }
 
-// --- create() MODIFICADO ---
 function create() {
     loadGame();
 
@@ -153,30 +192,13 @@ function create() {
     player.maxHealth = playerMaxHealth;
     player.damage = playerDamage;
 
-    // --- Hitbox do Player (Opcional, mas recomendado para consistência) ---
-    // Exemplo: se o player.png for 64x64 e você quer uma hitbox menor (30x30)
-    // player.body.setSize(30, 30);
-    // player.body.setOffset((player.width * player.scaleX - 30) / 2, (player.height * player.scaleY - 30) / 2);
-
-
     coins = this.physics.add.group();
     spawnCoins(this);
 
-    hudScoreText = this.add.text(16, 16, 'Pontos: 0', {
-        fontSize: '24px',
-        fill: '#ffffff',
-        fontFamily: 'Arial'
-    });
-    hudHealthText = this.add.text(16, 48, 'Vida: 100/100', {
-        fontSize: '24px',
-        fill: '#00ff00',
-        fontFamily: 'Arial'
-    });
-    hudWaveText = this.add.text(16, 80, 'Onda: 0', {
-        fontSize: '24px',
-        fill: '#00bfff',
-        fontFamily: 'Arial'
-    });
+    // HUD
+    hudScoreText = this.add.text(16, 16, 'Pontos: 0', { fontSize: '24px', fill: '#ffffff', fontFamily: 'Arial' });
+    hudHealthText = this.add.text(16, 48, 'Vida: 100/100', { fontSize: '24px', fill: '#00ff00', fontFamily: 'Arial' });
+    hudWaveText = this.add.text(16, 80, 'Onda: 0', { fontSize: '24px', fill: '#00bfff', fontFamily: 'Arial' });
     hudBg = this.add.graphics();
     hudBg.fillStyle(0x000000, 0.3);
     hudBg.fillRoundedRect(8, 8, 200, 100, 10);
@@ -196,17 +218,18 @@ function create() {
     enemies = this.physics.add.group();
     shooterEnemies = this.physics.add.group();
     enemyBullets = this.physics.add.group();
-
-    bouncerEnemies = this.physics.add.group(); // NOVO
-    bouncerBullets = this.physics.add.group(); // NOVO
+    bouncerEnemies = this.physics.add.group();
+    bouncerBullets = this.physics.add.group();
+    exploderEnemies = this.physics.add.group();
+    sniperEnemies = this.physics.add.group();
 
     increaseDifficulty.call(this);
 
     enemySpawnTimer = this.time.addEvent({
         delay: 3000,
         callback: () => {
-            // Conta todos os inimigos (normal + atirador)
-            const totalEnemies = enemies.getChildren().length + shooterEnemies.getChildren().length;
+            if (isGamePaused) return;
+            const totalEnemies = enemies.getChildren().length + shooterEnemies.getChildren().length + bouncerEnemies.getChildren().length + exploderEnemies.getChildren().length + sniperEnemies.getChildren().length;
             if (totalEnemies < maxEnemies) spawnEnemy(this);
         },
         loop: true
@@ -214,78 +237,64 @@ function create() {
 
     this.time.addEvent({
         delay: WAVE_INTERVAL,
-        callback: increaseDifficulty,
-        callbackScope: this,
+        callback: () => {
+            if (!isGamePaused) increaseDifficulty.call(this);
+        },
         loop: true
     });
 
-    this.physics.add.overlap(player, enemies, hitEnemy, null, this);
-    this.physics.add.overlap(player, shooterEnemies, hitEnemy, null, this); // Colisão player com atirador
-
-    bullets = this.physics.add.group(); // Balas do jogador
-
-    this.input.keyboard.on('keydown-ONE', () => {
-        currentWeapon = 'pistol';
-        updateHUD();
-    });
-    this.input.keyboard.on('keydown-TWO', () => {
-        currentWeapon = 'sword';
-        updateHUD();
-    });
-
+    // Collisions
     this.physics.add.overlap(player, enemies, hitEnemy, null, this);
     this.physics.add.overlap(player, shooterEnemies, hitEnemy, null, this);
-    this.physics.add.overlap(player, bouncerEnemies, hitEnemy, null, this); // NOVO: Colisão player com ricocheteador
+    this.physics.add.overlap(player, bouncerEnemies, hitEnemy, null, this);
+    this.physics.add.overlap(player, exploderEnemies, hitExploder, null, this);
+    this.physics.add.overlap(player, sniperEnemies, hitEnemy, null, this);
 
-    // ...
+    bullets = this.physics.add.group();
+
+    this.input.keyboard.on('keydown-ONE', () => { currentWeapon = 'pistol'; updateHUD(); });
+    this.input.keyboard.on('keydown-TWO', () => { currentWeapon = 'sword'; updateHUD(); });
 
     this.physics.add.overlap(bullets, enemies, bulletHitEnemy, null, this);
     this.physics.add.overlap(bullets, shooterEnemies, bulletHitEnemy, null, this);
-    this.physics.add.overlap(bullets, bouncerEnemies, bulletHitEnemy, null, this); // NOVO: Balas do jogador com ricocheteador
+    this.physics.add.overlap(bullets, bouncerEnemies, bulletHitEnemy, null, this);
+    this.physics.add.overlap(bullets, exploderEnemies, bulletHitEnemy, null, this);
+    this.physics.add.overlap(bullets, sniperEnemies, bulletHitEnemy, null, this);
 
     this.physics.add.overlap(player, enemyBullets, enemyBulletHitPlayer, null, this);
-    this.physics.add.overlap(player, bouncerBullets, bouncerBulletHitPlayer, null, this); // NOVO: Colisão balas ricocheteadoras com jogador
+    this.physics.add.overlap(player, bouncerBullets, bouncerBulletHitPlayer, null, this);
 
     pointer = this.input.activePointer;
-
     updateHUD();
 }
+
 function createWeaponHUD(scene) {
     hudWeaponContainer = scene.add.container();
-
     const startX = scene.game.config.width - 150;
     const startY = scene.game.config.height - 80;
     const spacingY = 40;
-
     if (!inventory) return;
-
     inventory.forEach((weapon, index) => {
         const bg = scene.add.rectangle(startX + 50, startY - index * spacingY, 120, 30, 0x222222, 0.8);
         bg.setStrokeStyle(2, 0xffffff, 0.3);
         bg.setOrigin(0.5);
-
         const text = scene.add.text(startX + 50, startY - index * spacingY, weapon.toUpperCase(), {
             font: '18px Arial',
             fill: weapon === currentWeapon ? '#FFD700' : '#FFFFFF'
         }).setOrigin(0.5);
-
         hudWeaponContainer.add(bg);
         hudWeaponContainer.add(text);
-
         hudWeaponHUD[weapon] = text;
     });
 }
 
 function updateHUD() {
     hudScoreText.setText(`Pontos: ${score}`);
-    hudHealthText.setText(`Vida: ${player.health}/${player.maxHealth}`);
+    hudHealthText.setText(`Vida: ${Math.floor(player.health)}/${playerMaxHealth}`);
     hudWaveText.setText(`Onda: ${currentWave}`);
-
     inventory.forEach(weapon => {
         const text = hudWeaponHUD[weapon];
-        if (text) {
-            text.setColor(weapon === currentWeapon ? '#FFD700' : '#FFFFFF');
-        }
+        if (text) text.setColor(weapon === currentWeapon ? '#FFD700' : '#FFFFFF');
     });
 }
 
@@ -293,7 +302,7 @@ function collectCoin(player, coin) {
     coin.disableBody(true, true);
     score += pointsPerCoin;
     updateHUD();
-    updateShop(); // <-- ADICIONE ESTA LINHA
+    updateShop();
     saveGame();
 }
 
@@ -307,91 +316,55 @@ function spawnCoins(scene) {
     }
 }
 
-// ---- LOJA - AGORA COM RETÂNGULOS ESTILIZADOS E POSIÇÃO AJUSTADA ----
 function createShop(scene) {
-    const shopX = scene.game.config.width - 120; // Ajustado para mais à direita
+    const shopX = scene.game.config.width - 120;
     let shopY = 16;
     const buttonHeight = 40;
     const spacing = 10;
     const buttonWidth = 180;
-
-    // Cores para os estados dos botões
     const NORMAL_COLOR = 0x222222;
     const HOVER_COLOR = 0x444444;
-    const ACTIVE_COLOR = 0x008800; // Verde mais escuro para o clique
+    const ACTIVE_COLOR = 0x008800;
 
-    // Função auxiliar para criar um botão retangular
     const createShopButton = (key, textContent, callback, cost) => {
         const buttonBg = scene.add.rectangle(shopX, shopY, buttonWidth, buttonHeight, NORMAL_COLOR)
-            .setOrigin(0.5, 0)
-            .setInteractive()
-            .setStrokeStyle(2, 0xffffff, 0.3)
-            .setDepth(10); // Aumenta a profundidade
-
+            .setOrigin(0.5, 0).setInteractive().setStrokeStyle(2, 0xffffff, 0.3).setDepth(10);
         const buttonText = scene.add.text(shopX, shopY + buttonHeight / 2, textContent, {
-            fontSize: '16px',
-            fill: '#ffffff',
-            fontFamily: 'Arial',
-            align: 'center'
-        }).setOrigin(0.5)
-            .setDepth(11); // Profundidade maior para o texto
+            fontSize: '16px', fill: '#ffffff', fontFamily: 'Arial', align: 'center'
+        }).setOrigin(0.5).setDepth(11);
 
-        // Eventos de interatividade
-        buttonBg.on('pointerover', () => {
-            if (buttonBg.input.enabled) {
-                buttonBg.setFillStyle(HOVER_COLOR);
-            }
-        });
-        buttonBg.on('pointerout', () => {
-            if (buttonBg.input.enabled) {
-                buttonBg.setFillStyle(NORMAL_COLOR);
-            }
-        });
+        buttonBg.on('pointerover', () => { if (buttonBg.input.enabled) buttonBg.setFillStyle(HOVER_COLOR); });
+        buttonBg.on('pointerout', () => { if (buttonBg.input.enabled) buttonBg.setFillStyle(NORMAL_COLOR); });
         buttonBg.on('pointerdown', () => {
-            if (buttonBg.input.enabled) { // Verifica se o botão está habilitado para clicar
+            if (buttonBg.input.enabled) {
                 buttonBg.setFillStyle(ACTIVE_COLOR);
-                callback(scene); // Chama a função de compra
+                callback(scene);
                 scene.time.delayedCall(100, () => {
-                    if (buttonBg.input.enabled) { // Se ainda estiver habilitado
-                        if (buttonBg.input.isOver) { // E o mouse ainda estiver sobre
-                            buttonBg.setFillStyle(HOVER_COLOR);
-                        } else {
-                            buttonBg.setFillStyle(NORMAL_COLOR);
-                        }
-                    }
+                    if (buttonBg.input.enabled) buttonBg.setFillStyle(buttonBg.input.isOver ? HOVER_COLOR : NORMAL_COLOR);
                 });
             }
         });
-
         shopTexts[key] = buttonText;
         shopButtons[key] = { bg: buttonBg, text: buttonText, cost: cost };
-
         shopY += buttonHeight + spacing;
-
         return scene.add.container(0, 0, [buttonBg, buttonText]);
     };
 
-    // Chamadas para criar cada botão
-    createShopButton('speed', `Velocidade: ${speedLevel} (Custo: ${upgradeCostSpeed})`, buySpeed, upgradeCostSpeed);
-    createShopButton('coins', `Moedas Max: ${coinLevel} (Custo: ${upgradeCostCoins})`, buyCoins, upgradeCostCoins);
-    createShopButton('magnet', `Ímã: ${magnetLevel > 0 ? 'Ativo' : 'Comprar'} (Custo: ${magnetCost})`, buyMagnet, magnetCost);
-    createShopButton('maxHealth', `Vida Max: ${playerMaxHealth} (Custo: 200)`, buyMaxHealth, 200);
-    createShopButton('playerDamage', `Dano: ${playerDamage} (Custo: 100)`, buyPlayerDamage, 100);
-
+    createShopButton('speed', `Velocidade: ${speedLevel} (${upgradeCostSpeed})`, buySpeed, upgradeCostSpeed);
+    createShopButton('coins', `Moedas Max: ${coinLevel} (${upgradeCostCoins})`, buyCoins, upgradeCostCoins);
+    createShopButton('magnet', `Ímã: ${magnetLevel > 0 ? 'Ativo' : 'Comprar'} (${magnetCost})`, buyMagnet, magnetCost);
+    createShopButton('maxHealth', `Vida Max: ${playerMaxHealth} (200)`, buyMaxHealth, 200);
+    createShopButton('playerDamage', `Dano: ${playerDamage} (100)`, buyPlayerDamage, 100);
     updateShop();
 }
 
-
-// ---- UPGRADES ----
 function buySpeed(scene) {
     if (score >= upgradeCostSpeed) {
         score -= upgradeCostSpeed;
         playerSpeed += 20;
         speedLevel++;
         upgradeCostSpeed = Math.round(upgradeCostSpeed * 1.5);
-        updateHUD();
-        updateShop();
-        saveGame();
+        updateHUD(); updateShop(); saveGame();
     }
 }
 function buyCoins(scene) {
@@ -400,97 +373,57 @@ function buyCoins(scene) {
         maxCoins += 1;
         coinLevel++;
         upgradeCostCoins = Math.round(upgradeCostCoins * 1.5);
-        updateHUD();
-        updateShop();
-        saveGame();
+        updateHUD(); updateShop(); saveGame();
     }
 }
 function buyMagnet(scene) {
     if (magnetLevel === 0 && score >= magnetCost) {
         score -= magnetCost;
         magnetLevel = 1;
-        updateHUD();
-        updateShop();
-        saveGame();
+        updateHUD(); updateShop(); saveGame();
     }
 }
 function buyMaxHealth(scene) {
-    const cost = 200;
-    if (score >= cost) {
-        score -= cost;
+    if (score >= 200) {
+        score -= 200;
         playerMaxHealth += 20;
         player.maxHealth = playerMaxHealth;
         player.health += 20;
         if (player.health > player.maxHealth) player.health = player.maxHealth;
-        updateHUD();
-        updateShop();
-        saveGame();
+        updateHUD(); updateShop(); saveGame();
     }
 }
 function buyPlayerDamage(scene) {
-    const cost = 100;
-    if (score >= cost) {
-        score -= cost;
+    if (score >= 100) {
+        score -= 100;
         playerDamage += 5;
         player.damage = playerDamage;
-        updateHUD();
-        updateShop();
-        saveGame();
+        updateHUD(); updateShop(); saveGame();
     }
 }
 
 function updateShop() {
-    // Cores para os estados dos botões
     const NORMAL_COLOR = 0x222222;
-    const DISABLED_COLOR_BG = 0x111111; // Fundo do botão desabilitado
-    const DISABLED_COLOR_TEXT = '#888888'; // Texto do botão desabilitado
-    const ENABLED_COLOR_TEXT = '#ffffff'; // Texto do botão habilitado
+    const DISABLED_COLOR_BG = 0x111111;
+    const DISABLED_COLOR_TEXT = '#888888';
+    const ENABLED_COLOR_TEXT = '#ffffff';
 
-    // Atualiza os textos dos botões
-    shopTexts.speed.setText(`Velocidade: ${speedLevel} (Custo: ${upgradeCostSpeed})`);
-    shopTexts.coins.setText(`Moedas Max: ${coinLevel} (Custo: ${upgradeCostCoins})`);
-    shopTexts.magnet.setText(`Ímã: ${magnetLevel > 0 ? 'Ativo' : 'Comprar'} (Custo: ${magnetCost})`);
-    shopTexts.maxHealth.setText(`Vida Max: ${playerMaxHealth} (Custo: 200)`);
-    shopTexts.playerDamage.setText(`Dano: ${playerDamage} (Custo: 100)`);
+    const updateButton = (key, text, cost, condition = true) => {
+        if (shopButtons[key]) {
+            shopTexts[key].setText(text);
+            const canAfford = score >= cost && condition;
+            shopButtons[key].bg.setFillStyle(canAfford ? NORMAL_COLOR : DISABLED_COLOR_BG);
+            shopButtons[key].text.setColor(canAfford ? ENABLED_COLOR_TEXT : DISABLED_COLOR_TEXT);
+            shopButtons[key].bg.input.enabled = canAfford;
+        }
+    };
 
-    // Lógica para habilitar/desabilitar botões
-    // Velocidade
-    if (shopButtons.speed) {
-        const canAfford = score >= upgradeCostSpeed;
-        shopButtons.speed.bg.setFillStyle(canAfford ? NORMAL_COLOR : DISABLED_COLOR_BG);
-        shopButtons.speed.text.setColor(canAfford ? ENABLED_COLOR_TEXT : DISABLED_COLOR_TEXT);
-        shopButtons.speed.bg.input.enabled = canAfford; // Usa input.enabled para controlar a interatividade
-    }
-    // Moedas
-    if (shopButtons.coins) {
-        const canAfford = score >= upgradeCostCoins;
-        shopButtons.coins.bg.setFillStyle(canAfford ? NORMAL_COLOR : DISABLED_COLOR_BG);
-        shopButtons.coins.text.setColor(canAfford ? ENABLED_COLOR_TEXT : DISABLED_COLOR_TEXT);
-        shopButtons.coins.bg.input.enabled = canAfford;
-    }
-    // Ímã (só pode comprar uma vez)
-    if (shopButtons.magnet) {
-        const canAfford = score >= magnetCost && magnetLevel === 0; // Só pode comprar se não tiver o ímã
-        shopButtons.magnet.bg.setFillStyle(canAfford ? NORMAL_COLOR : DISABLED_COLOR_BG);
-        shopButtons.magnet.text.setColor(canAfford ? ENABLED_COLOR_TEXT : DISABLED_COLOR_TEXT);
-        shopButtons.magnet.bg.input.enabled = canAfford;
-    }
-    // Vida Máxima
-    if (shopButtons.maxHealth) {
-        const canAfford = score >= shopButtons.maxHealth.cost;
-        shopButtons.maxHealth.bg.setFillStyle(canAfford ? NORMAL_COLOR : DISABLED_COLOR_BG);
-        shopButtons.maxHealth.text.setColor(canAfford ? ENABLED_COLOR_TEXT : DISABLED_COLOR_TEXT);
-        shopButtons.maxHealth.bg.input.enabled = canAfford;
-    }
-    // Dano do Jogador
-    if (shopButtons.playerDamage) {
-        const canAfford = score >= shopButtons.playerDamage.cost;
-        shopButtons.playerDamage.bg.setFillStyle(canAfford ? NORMAL_COLOR : DISABLED_COLOR_BG);
-        shopButtons.playerDamage.text.setColor(canAfford ? ENABLED_COLOR_TEXT : DISABLED_COLOR_TEXT);
-        shopButtons.playerDamage.bg.input.enabled = canAfford;
-    }
+    updateButton('speed', `Velocidade: ${speedLevel} (${upgradeCostSpeed})`, upgradeCostSpeed);
+    updateButton('coins', `Moedas Max: ${coinLevel} (${upgradeCostCoins})`, upgradeCostCoins);
+    updateButton('magnet', `Ímã: ${magnetLevel > 0 ? 'Ativo' : 'Comprar'} (${magnetCost})`, magnetCost, magnetLevel === 0);
+    updateButton('maxHealth', `Vida Max: ${playerMaxHealth} (200)`, 200);
+    updateButton('playerDamage', `Dano: ${playerDamage} (100)`, 100);
 }
-
 
 function increaseDifficulty() {
     currentWave++;
@@ -499,6 +432,77 @@ function increaseDifficulty() {
     baseEnemyDamage += 2;
     if (currentWave % 2 === 0) maxEnemies += 1;
     this.cameras.main.shake(100, 0.005);
+
+    if (currentWave % 5 === 0) {
+        showPowerUpSelection(this);
+    }
+
+    updateHUD();
+    saveGame();
+}
+
+function showPowerUpSelection(scene) {
+    isGamePaused = true;
+    scene.physics.pause();
+
+    // Create a container for the UI
+    const container = scene.add.container(scene.game.config.width / 2, scene.game.config.height / 2);
+    const bg = scene.add.rectangle(0, 0, 600, 400, 0x000000, 0.9).setStrokeStyle(4, 0x00ff00);
+    const title = scene.add.text(0, -150, 'ESCOLHA UM PODER', { fontSize: '32px', fill: '#00ff00', fontStyle: 'bold' }).setOrigin(0.5);
+
+    container.add([bg, title]);
+
+    const options = [
+        { name: 'Tiro Duplo', desc: 'Atira +1 bala por vez', type: 'multishot' },
+        { name: 'Metralhadora', desc: 'Atira mais rápido', type: 'rapidfire' },
+        { name: 'Dano Extra', desc: 'Aumenta o dano', type: 'damage' },
+        { name: 'Velocidade', desc: 'Corre mais rápido', type: 'speed' },
+        { name: 'Cura Total', desc: 'Recupera toda vida', type: 'heal' },
+        { name: 'Vida Máxima', desc: 'Aumenta vida máxima', type: 'maxhealth' },
+        // Add more ideas
+        { name: 'Vampirismo', desc: 'Cura ao matar', type: 'vampirism' },
+        { name: 'Congelamento', desc: 'Chance de congelar', type: 'freeze' },
+        { name: 'Explosivo', desc: 'Inimigos explodem', type: 'explosive' },
+        { name: 'Sniper', desc: 'Tiro mais rápido e forte', type: 'sniper_upgrade' }
+    ];
+
+    // Pick 3 random options
+    const choices = [];
+    while (choices.length < 3) {
+        const opt = options[Phaser.Math.Between(0, options.length - 1)];
+        if (!choices.includes(opt)) choices.push(opt);
+    }
+
+    choices.forEach((opt, index) => {
+        const y = -50 + index * 80;
+        const btn = scene.add.rectangle(0, y, 400, 60, 0x333333).setInteractive();
+        const btnText = scene.add.text(0, y, `${opt.name}\n${opt.desc}`, { fontSize: '18px', fill: '#ffffff', align: 'center' }).setOrigin(0.5);
+
+        btn.on('pointerover', () => btn.setFillStyle(0x555555));
+        btn.on('pointerout', () => btn.setFillStyle(0x333333));
+        btn.on('pointerdown', () => {
+            applyPowerUp(opt.type);
+            container.destroy();
+            isGamePaused = false;
+            scene.physics.resume();
+        });
+
+        container.add([btn, btnText]);
+    });
+}
+
+function applyPowerUp(type) {
+    powerUps.push(type);
+    switch (type) {
+        case 'multishot': playerBulletCount++; break;
+        case 'rapidfire': fireRate = Math.max(100, fireRate - 50); break;
+        case 'damage': playerDamage += 5; player.damage = playerDamage; break;
+        case 'speed': playerSpeed += 20; break;
+        case 'heal': player.health = playerMaxHealth; break;
+        case 'maxhealth': playerMaxHealth += 50; player.maxHealth = playerMaxHealth; player.health += 50; break;
+        case 'sniper_upgrade': playerDamage += 10; fireRate += 100; break; // Stronger but slower
+        // Others are passive effects handled in update/collision
+    }
     updateHUD();
     saveGame();
 }
@@ -506,59 +510,63 @@ function increaseDifficulty() {
 function getOffScreenSpawnPosition(scene) {
     const gameWidth = scene.game.config.width;
     const gameHeight = scene.game.config.height;
-    const padding = 50; // Distância mínima da borda para garantir que esteja fora da tela
-
+    const padding = 50;
     let x, y;
-    const side = Phaser.Math.Between(0, 3); // 0: top, 1: right, 2: bottom, 3: left
-
+    const side = Phaser.Math.Between(0, 3);
     switch (side) {
-        case 0: // Top
-            x = Phaser.Math.Between(-padding, gameWidth + padding);
-            y = -padding;
-            break;
-        case 1: // Right
-            x = gameWidth + padding;
-            y = Phaser.Math.Between(-padding, gameHeight + padding);
-            break;
-        case 2: // Bottom
-            x = Phaser.Math.Between(-padding, gameWidth + padding);
-            y = gameHeight + padding;
-            break;
-        case 3: // Left
-            x = -padding;
-            y = Phaser.Math.Between(-padding, gameHeight + padding);
-            break;
+        case 0: x = Phaser.Math.Between(-padding, gameWidth + padding); y = -padding; break;
+        case 1: x = gameWidth + padding; y = Phaser.Math.Between(-padding, gameHeight + padding); break;
+        case 2: x = Phaser.Math.Between(-padding, gameWidth + padding); y = gameHeight + padding; break;
+        case 3: x = -padding; y = Phaser.Math.Between(-padding, gameHeight + padding); break;
     }
     return { x, y };
 }
 
-
-// --- spawnEnemy() MODIFICADO ---
 function spawnEnemy(scene) {
     const spawnPos = getOffScreenSpawnPosition(scene);
-
     let enemy;
-    const totalEnemyTypes = 3; // Agora temos 3 tipos: normal, shooter, bouncer
-    const randomType = Phaser.Math.Between(0, totalEnemyTypes - 1); // 0, 1 ou 2
 
-    // Defina as chances para cada tipo (ajuste conforme a dificuldade desejada)
-    // Exemplo: 0 = Normal (60%), 1 = Shooter (30%), 2 = Bouncer (10%)
-    // Ou faça por onda:
-    let enemyTypeChance = Phaser.Math.Between(0, 100);
-    const shooterChance = 30 + currentWave * 2; // Aumenta a chance do atirador com a onda
-    const bouncerChance = 10 + currentWave * 1; // Aumenta a chance do ricocheteador com a onda
+    // Chances based on wave
+    let r = Phaser.Math.Between(0, 100);
 
-    // priorize inimigos mais perigosos em ondas mais altas
-    if (enemyTypeChance < bouncerChance && currentWave >= 2) { // Ricocheteador a partir da onda 2
+    // Wave 5+: Exploders (10%)
+    // Wave 3+: Snipers (15%)
+    // Wave 2+: Bouncers (20%)
+    // Wave 1+: Shooters (30%)
+    // Rest: Normal
+
+    if (currentWave >= 5 && r < 10) {
+        // Exploder
+        enemy = scene.physics.add.sprite(spawnPos.x, spawnPos.y, 'red_square'); // Placeholder
+        enemy.setTint(0xffaa00); // Orange
+        enemy.health = baseEnemyHealth * 0.5; // Low HP
+        enemy.damage = baseEnemyDamage * 3; // High Damage
+        enemy.speed = baseEnemySpeed * 2.5; // Very Fast
+        enemy.type = 'exploder';
+        exploderEnemies.add(enemy);
+    } else if (currentWave >= 3 && r < 25) {
+        // Sniper
+        enemy = scene.physics.add.sprite(spawnPos.x, spawnPos.y, 'shooter_enemy');
+        enemy.setTint(0x0000ff); // Blue tint
+        enemy.health = baseEnemyHealth * 0.8;
+        enemy.damage = baseEnemyDamage * 2;
+        enemy.speed = baseEnemySpeed * 0.6; // Slow move
+        enemy.type = 'sniper';
+        enemy.lastShotTime = 0;
+        enemy.fireRate = 4000; // Slow fire
+        sniperEnemies.add(enemy);
+    } else if (currentWave >= 2 && r < 45) {
+        // Bouncer
         enemy = scene.physics.add.sprite(spawnPos.x, spawnPos.y, 'bouncer_enemy');
-        enemy.health = baseEnemyHealth * 2.0; // Ricocheteadores podem ter mais vida
-        enemy.damage = baseEnemyDamage * 1.5; // E causar mais dano no toque
-        enemy.speed = baseEnemySpeed * 0.5; // E ser mais lento
+        enemy.health = baseEnemyHealth * 2;
+        enemy.damage = baseEnemyDamage * 1.5;
+        enemy.speed = baseEnemySpeed * 0.5;
         enemy.type = 'bouncer';
         enemy.lastShotTime = 0;
         enemy.fireRate = bouncerEnemyFireRate;
         bouncerEnemies.add(enemy);
-    } else if (enemyTypeChance < shooterChance && currentWave >= 1) { // Atirador a partir da onda 1
+    } else if (currentWave >= 1 && r < 75) {
+        // Shooter
         enemy = scene.physics.add.sprite(spawnPos.x, spawnPos.y, 'shooter_enemy');
         enemy.health = baseEnemyHealth * 1.5;
         enemy.damage = baseEnemyDamage;
@@ -567,7 +575,8 @@ function spawnEnemy(scene) {
         enemy.lastShotTime = 0;
         enemy.fireRate = shooterEnemyFireRate;
         shooterEnemies.add(enemy);
-    } else { // Normal
+    } else {
+        // Normal
         enemy = scene.physics.add.sprite(spawnPos.x, spawnPos.y, 'red_square');
         enemy.health = baseEnemyHealth;
         enemy.damage = baseEnemyDamage;
@@ -576,10 +585,8 @@ function spawnEnemy(scene) {
         enemies.add(enemy);
     }
 
-    // --- Hitbox do Inimigo --- (mantenha a lógica de hitbox para todos os inimigos)
     const hitboxWidth = 40;
     const hitboxHeight = 40;
-
     enemy.body.setSize(hitboxWidth, hitboxHeight);
     const offsetX = (enemy.width - hitboxWidth) / 2;
     const offsetY = (enemy.height - hitboxHeight) / 2;
@@ -590,33 +597,51 @@ function hitEnemy(player, enemy) {
     if (!player.lastHitTime) player.lastHitTime = 0;
     const hitCooldown = 500;
     if (this.time.now > player.lastHitTime + hitCooldown) {
-        // Reduz a vida do jogador
         player.health -= enemy.damage;
         player.lastHitTime = this.time.now;
-
-        // Efeito visual de acerto no jogador
         player.setTint(0xff0000);
         this.time.delayedCall(200, () => player.clearTint());
         updateHUD();
-
-        // Se o jogador morrer, reinicia o jogo e reseta as variáveis
         if (player.health <= 0) {
-            // score = 0; <-- REMOVA ESTA LINHA
-            // currentWave = 0; <-- REMOVA ESTA LINHA
-            // saveGame(); <-- REMOVA ESTA LINHA
+            resetGame();
             this.scene.restart();
         }
     }
 }
 
+function hitExploder(player, enemy) {
+    // Exploder explodes instantly on contact
+    enemy.destroy();
+    // Create explosion effect (simple circle for now)
+    let explosion = this.add.circle(enemy.x, enemy.y, 100, 0xff0000, 0.5);
+    this.time.delayedCall(200, () => explosion.destroy());
+
+    player.health -= enemy.damage; // High damage
+    player.setTint(0xff0000);
+    this.time.delayedCall(200, () => player.clearTint());
+    updateHUD();
+    if (player.health <= 0) {
+        resetGame();
+        this.scene.restart();
+    }
+}
+
 function shootBullet(scene, angle) {
-    let bullet = scene.add.rectangle(player.x, player.y, 8, 4, 0xffffff);
-    scene.physics.add.existing(bullet);
-    bullets.add(bullet);
-    bullet.body.setAllowGravity(false);
-    bullet.damage = player.damage;
-    scene.physics.velocityFromRotation(angle, 400, bullet.body.velocity);
-    scene.time.delayedCall(2000, () => bullet.destroy());
+    // Multishot logic
+    const spread = 10; // degrees
+    const startAngle = angle - Phaser.Math.DegToRad((playerBulletCount - 1) * spread / 2);
+
+    for (let i = 0; i < playerBulletCount; i++) {
+        let currentAngle = startAngle + Phaser.Math.DegToRad(i * spread);
+
+        let bullet = scene.add.rectangle(player.x, player.y, 8, 4, 0xffffff);
+        scene.physics.add.existing(bullet);
+        bullets.add(bullet);
+        bullet.body.setAllowGravity(false);
+        bullet.damage = player.damage;
+        scene.physics.velocityFromRotation(currentAngle, 400, bullet.body.velocity);
+        scene.time.delayedCall(2000, () => bullet.destroy());
+    }
 }
 
 function swordAttack(scene, angle) {
@@ -626,35 +651,53 @@ function swordAttack(scene, angle) {
     let hitbox = scene.add.rectangle(player.x + offsetX, player.y + offsetY, 50, 30, 0x00ff00, 0.3);
     scene.physics.add.existing(hitbox);
     hitbox.body.setAllowGravity(false);
-    hitbox.damage = player.damage;
+    hitbox.damage = player.damage * 2; // Sword deals more damage
     let enemiesHit = new Set();
-    scene.physics.overlap(hitbox, enemies, (box, enemy) => {
+
+    const checkHit = (box, enemy) => {
         if (!enemiesHit.has(enemy)) {
             takeDamage.call(scene, enemy, box.damage);
             enemiesHit.add(enemy);
         }
-    });
-    scene.physics.overlap(hitbox, shooterEnemies, (box, enemy) => { // Dano da espada no atirador
-        if (!enemiesHit.has(enemy)) {
-            takeDamage.call(scene, enemy, box.damage);
-            enemiesHit.add(enemy);
-        }
-    });
+    };
+
+    scene.physics.overlap(hitbox, enemies, checkHit);
+    scene.physics.overlap(hitbox, shooterEnemies, checkHit);
+    scene.physics.overlap(hitbox, bouncerEnemies, checkHit);
+    scene.physics.overlap(hitbox, exploderEnemies, checkHit);
+    scene.physics.overlap(hitbox, sniperEnemies, checkHit);
+
     scene.time.delayedCall(200, () => hitbox.destroy());
 }
 
 function bulletHitEnemy(bullet, enemy) {
-    bullet.destroy();
+    if (!powerUps.includes('piercing')) bullet.destroy(); // Destroy unless piercing
     takeDamage.call(this, enemy, bullet.damage);
 }
 
-// --- takeDamage() MODIFICADO para lidar com diferentes grupos de inimigos ---
 function takeDamage(target, amount) {
     if (!target || !target.active) return;
     target.health -= amount;
     target.setTint(0xff8888);
-    this.time.delayedCall(150, () => target.clearTint());
+    this.time.delayedCall(150, () => {
+        if (target.active) target.clearTint();
+        if (target.type === 'exploder') target.setTint(0xffaa00);
+        if (target.type === 'sniper') target.setTint(0x0000ff);
+    });
+
     if (target.health <= 0) {
+        // Vampirism
+        if (powerUps.includes('vampirism')) {
+            player.health = Math.min(player.health + 1, playerMaxHealth);
+            updateHUD();
+        }
+        // Explosive kill
+        if (powerUps.includes('explosive')) {
+            let explosion = this.add.circle(target.x, target.y, 50, 0xffaa00, 0.5);
+            this.time.delayedCall(100, () => explosion.destroy());
+            // Logic to damage nearby enemies could go here
+        }
+
         target.destroy();
         score += 10 + currentWave * 2;
         updateHUD();
@@ -662,97 +705,43 @@ function takeDamage(target, amount) {
     }
 }
 
-// --- NOVA FUNÇÃO: Inimigo atira balas ---
 function enemyShootBullet(scene, enemy) {
-    // Calcula o ângulo em direção ao jogador
     const angleToPlayer = Phaser.Math.Angle.Between(enemy.x, enemy.y, player.x, player.y);
-
-    // Ajusta o ângulo do inimigo para "olhar" para o jogador
     enemy.setRotation(angleToPlayer);
 
-    // Dispara múltiplas balas com um pouco de espalhamento
     for (let i = 0; i < shooterEnemyBulletCount; i++) {
         const spreadAngle = Phaser.Math.Between(-shooterEnemyBulletSpread / 2, shooterEnemyBulletSpread / 2);
         const finalAngle = Phaser.Math.DegToRad(Phaser.Math.RadToDeg(angleToPlayer) + spreadAngle);
 
-        let bullet = scene.add.sprite(enemy.x, enemy.y, 'enemy_bullet').setScale(0.1); // Use sprite para bala inimiga
+        let bullet = scene.add.sprite(enemy.x, enemy.y, 'enemy_bullet').setScale(0.1);
         scene.physics.add.existing(bullet);
-        enemyBullets.add(bullet); // Adiciona ao grupo de balas inimigas
-
+        enemyBullets.add(bullet);
         bullet.body.setAllowGravity(false);
-        bullet.damage = shooterEnemyDamage; // Dano da bala do inimigo
-
+        bullet.damage = shooterEnemyDamage;
         scene.physics.velocityFromRotation(finalAngle, shooterEnemyBulletSpeed, bullet.body.velocity);
-
-        // Ajuste a hitbox da bala do inimigo se necessário
-        bullet.body.setSize(10, 10); // Exemplo: 10x10 para a bala do inimigo
-        bullet.body.setOffset((bullet.width * bullet.scaleX - 10) / 2, (bullet.height * bullet.scaleY - 10) / 2);
-
-
-        // Balas inimigas são destruídas após um tempo ou fora da tela
-        scene.time.delayedCall(3000, () => bullet.destroy()); // Destruir após 3 segundos
+        bullet.body.setSize(10, 10);
+        scene.time.delayedCall(3000, () => bullet.destroy());
     }
 }
 
-// --- NOVA FUNÇÃO: Colisão de bala inimiga com jogador ---
-function enemyBulletHitPlayer(player, bullet) {
-    bullet.destroy(); // Destroi a bala do inimigo ao atingir o jogador
-
-    // Lógica de dano ao jogador (similar à colisão com o inimigo)
-    if (!player.lastHitTime) player.lastHitTime = 0;
-    const hitCooldown = 500; // Cooldown para não tomar dano de várias balas de uma vez
-    if (this.time.now > player.lastHitTime + hitCooldown) {
-        player.health -= bullet.damage;
-        player.lastHitTime = this.time.now;
-        player.setTint(0xff0000);
-        this.time.delayedCall(200, () => player.clearTint());
-        updateHUD();
-        if (player.health <= 0) {
-            // score = 0; <-- REMOVA ESTA LINHA
-            // currentWave = 0; <-- REMOVA ESTA LINHA
-            // saveGame(); <-- REMOVA ESTA LINHA
-            this.scene.restart();
-        }
-    }
-}
-
-// --- NOVA FUNÇÃO: Inimigo ricocheteador atira bala ---
-function bouncerEnemyShootBullet(scene, enemy) {
-    // Calcula o ângulo em direção ao jogador
+function sniperShoot(scene, enemy) {
     const angleToPlayer = Phaser.Math.Angle.Between(enemy.x, enemy.y, player.x, player.y);
-
-    // Ajusta o ângulo do inimigo para "olhar" para o jogador
     enemy.setRotation(angleToPlayer);
 
-    let bullet = scene.add.sprite(enemy.x, enemy.y, 'bouncer_bullet')
-        .setScale(bouncerEnemyBulletSize / 32); // Ajusta a escala baseado no tamanho desejado e tamanho original do sprite (se for 32x32)
+    // Fast, single shot
+    let bullet = scene.add.rectangle(enemy.x, enemy.y, 10, 4, 0x00ffff);
     scene.physics.add.existing(bullet);
-    bouncerBullets.add(bullet);
-
+    enemyBullets.add(bullet);
     bullet.body.setAllowGravity(false);
-    bullet.damage = bouncerEnemyDamage;
-    bullet.body.setCollideWorldBounds(true); // Faz a bala ricochetear nas bordas do mundo
-    bullet.body.setBounce(1); // Define o "ricochete" para 100%
-
-    // Ajusta a hitbox da bala ricocheteadora
-    bullet.body.setSize(bouncerEnemyBulletSize, bouncerEnemyBulletSize);
-    bullet.body.setOffset((bullet.width * bullet.scaleX - bouncerEnemyBulletSize) / 2, (bullet.height * bullet.scaleY - bouncerEnemyBulletSize) / 2);
-
-    scene.physics.velocityFromRotation(angleToPlayer, bouncerEnemyBulletSpeed, bullet.body.velocity);
-
-    // Destruir bala após um tempo
-    scene.time.delayedCall(bouncerEnemyBulletLifetime, () => {
-        if (bullet.active) bullet.destroy();
-    });
+    bullet.damage = shooterEnemyDamage * 2;
+    scene.physics.velocityFromRotation(angleToPlayer, 600, bullet.body.velocity); // Very fast
+    scene.time.delayedCall(2000, () => bullet.destroy());
 }
 
-// --- NOVA FUNÇÃO: Colisão de bala ricocheteadora com jogador ---
-function bouncerBulletHitPlayer(player, bullet) {
-    bullet.destroy(); // Destrói a bala ricocheteadora ao atingir o jogador
-
-    // Lógica de dano ao jogador (similar às outras balas)
+function enemyBulletHitPlayer(player, bullet) {
+    bullet.destroy();
     if (!player.lastHitTime) player.lastHitTime = 0;
-    const hitCooldown = 500; // Cooldown para não tomar dano de várias balas de uma vez
+    const hitCooldown = 500;
     if (this.time.now > player.lastHitTime + hitCooldown) {
         player.health -= bullet.damage;
         player.lastHitTime = this.time.now;
@@ -760,17 +749,48 @@ function bouncerBulletHitPlayer(player, bullet) {
         this.time.delayedCall(200, () => player.clearTint());
         updateHUD();
         if (player.health <= 0) {
-            // score = 0; <-- REMOVA ESTA LINHA
-            // currentWave = 0; <-- REMOVA ESTA LINHA
-            // saveGame(); <-- REMOVA ESTA LINHA
+            resetGame();
             this.scene.restart();
         }
     }
 }
 
+function bouncerEnemyShootBullet(scene, enemy) {
+    const angleToPlayer = Phaser.Math.Angle.Between(enemy.x, enemy.y, player.x, player.y);
+    enemy.setRotation(angleToPlayer);
 
-// --- update()
+    let bullet = scene.add.sprite(enemy.x, enemy.y, 'bouncer_bullet').setScale(bouncerEnemyBulletSize / 32);
+    scene.physics.add.existing(bullet);
+    bouncerBullets.add(bullet);
+    bullet.body.setAllowGravity(false);
+    bullet.damage = bouncerEnemyDamage;
+    bullet.body.setCollideWorldBounds(true);
+    bullet.body.setBounce(1);
+    bullet.body.setSize(bouncerEnemyBulletSize, bouncerEnemyBulletSize);
+    scene.physics.velocityFromRotation(angleToPlayer, bouncerEnemyBulletSpeed, bullet.body.velocity);
+    scene.time.delayedCall(bouncerEnemyBulletLifetime, () => { if (bullet.active) bullet.destroy(); });
+}
+
+function bouncerBulletHitPlayer(player, bullet) {
+    bullet.destroy();
+    if (!player.lastHitTime) player.lastHitTime = 0;
+    const hitCooldown = 500;
+    if (this.time.now > player.lastHitTime + hitCooldown) {
+        player.health -= bullet.damage;
+        player.lastHitTime = this.time.now;
+        player.setTint(0xff0000);
+        this.time.delayedCall(200, () => player.clearTint());
+        updateHUD();
+        if (player.health <= 0) {
+            resetGame();
+            this.scene.restart();
+        }
+    }
+}
+
 function update(time, delta) {
+    if (isGamePaused) return;
+
     player.setVelocity(0);
     if (keys.left.isDown) player.setVelocityX(-playerSpeed);
     if (keys.right.isDown) player.setVelocityX(playerSpeed);
@@ -799,23 +819,17 @@ function update(time, delta) {
         });
     }
 
-    // Movimento dos inimigos normais
+    // Enemy AI
     enemies.getChildren().forEach(enemy => {
         if (enemy.active) this.physics.moveToObject(enemy, player, enemy.speed);
     });
 
-    // Movimento e disparo dos inimigos atiradores
     shooterEnemies.getChildren().forEach(enemy => {
         if (enemy.active) {
             const stopDistance = 200;
             const distanceToPlayer = Phaser.Math.Distance.Between(enemy.x, enemy.y, player.x, player.y);
-
-            if (distanceToPlayer > stopDistance) {
-                this.physics.moveToObject(enemy, player, enemy.speed);
-            } else {
-                enemy.body.setVelocity(0);
-            }
-
+            if (distanceToPlayer > stopDistance) this.physics.moveToObject(enemy, player, enemy.speed);
+            else enemy.body.setVelocity(0);
             if (time > enemy.lastShotTime + enemy.fireRate) {
                 enemyShootBullet(this, enemy);
                 enemy.lastShotTime = time;
@@ -823,19 +837,12 @@ function update(time, delta) {
         }
     });
 
-    // --- NOVIDADE: Movimento e disparo dos inimigos ricocheteadores ---
     bouncerEnemies.getChildren().forEach(enemy => {
         if (enemy.active) {
-            const bouncerStopDistance = 250; // Distância para o inimigo ricocheteador parar
+            const bouncerStopDistance = 250;
             const distanceToPlayer = Phaser.Math.Distance.Between(enemy.x, enemy.y, player.x, player.y);
-
-            if (distanceToPlayer > bouncerStopDistance) {
-                this.physics.moveToObject(enemy, player, enemy.speed);
-            } else {
-                enemy.body.setVelocity(0);
-            }
-
-            // Lógica de disparo de tiro único
+            if (distanceToPlayer > bouncerStopDistance) this.physics.moveToObject(enemy, player, enemy.speed);
+            else enemy.body.setVelocity(0);
             if (time > enemy.lastShotTime + enemy.fireRate) {
                 bouncerEnemyShootBullet(this, enemy);
                 enemy.lastShotTime = time;
@@ -843,6 +850,23 @@ function update(time, delta) {
         }
     });
 
+    exploderEnemies.getChildren().forEach(enemy => {
+        if (enemy.active) this.physics.moveToObject(enemy, player, enemy.speed);
+    });
+
+    sniperEnemies.getChildren().forEach(enemy => {
+        if (enemy.active) {
+            const stopDistance = 400; // Stays far
+            const distanceToPlayer = Phaser.Math.Distance.Between(enemy.x, enemy.y, player.x, player.y);
+            if (distanceToPlayer > stopDistance) this.physics.moveToObject(enemy, player, enemy.speed);
+            else enemy.body.setVelocity(0);
+
+            if (time > enemy.lastShotTime + enemy.fireRate) {
+                sniperShoot(this, enemy);
+                enemy.lastShotTime = time;
+            }
+        }
+    });
 
     if (pointer.isDown) {
         if (currentWeapon === 'pistol' && time > lastShot + fireRate) {
@@ -854,10 +878,7 @@ function update(time, delta) {
         }
     }
 
-    // Destruir balas inimigas que saem da tela
     enemyBullets.getChildren().forEach(bullet => {
-        if (bullet.active && !this.physics.world.bounds.contains(bullet.x, bullet.y)) {
-            bullet.destroy();
-        }
+        if (bullet.active && !this.physics.world.bounds.contains(bullet.x, bullet.y)) bullet.destroy();
     });
 }
